@@ -17,10 +17,10 @@ enum Token {
 
 #[derive(PartialEq, Eq, Debug)]
 enum Operation {
-    MoveRight,
-    MoveLeft,
-    Increment,
-    Decrement,
+    MoveRight(usize),
+    MoveLeft(usize),
+    Increment(u8),
+    Decrement(u8),
     Output,
     Input,
     Loop(Vec<Operation>),
@@ -29,6 +29,8 @@ enum Operation {
 #[derive(PartialEq, Eq, Debug)]
 pub enum InterpreterError {
     ParseError(String),
+    MemoryOverflow,
+    PointerOverflow,
 }
 
 struct Program {
@@ -56,10 +58,31 @@ impl Program {
     fn process_operations(&mut self, operations: &[Operation]) -> Result<(), InterpreterError> {
         for operation in operations {
             match operation {
-                Operation::MoveLeft => self.pointer -= 1,
-                Operation::MoveRight => self.pointer += 1,
-                Operation::Increment => self.memory[self.pointer] += 1,
-                Operation::Decrement => self.memory[self.pointer] -= 1,
+                Operation::MoveLeft(count) => {
+                    self.pointer = self
+                        .pointer
+                        .checked_sub(*count)
+                        .ok_or(InterpreterError::PointerOverflow)?;
+                }
+                Operation::MoveRight(count) => {
+                    self.pointer = self
+                        .pointer
+                        .checked_add(*count)
+                        .ok_or(InterpreterError::PointerOverflow)?;
+                    if self.pointer >= self.memory.len() {
+                        return Err(InterpreterError::PointerOverflow);
+                    }
+                }
+                Operation::Increment(count) => {
+                    self.memory[self.pointer] = self.memory[self.pointer]
+                        .checked_add(*count)
+                        .ok_or(InterpreterError::MemoryOverflow)?;
+                }
+                Operation::Decrement(count) => {
+                    self.memory[self.pointer] = self.memory[self.pointer]
+                        .checked_sub(*count)
+                        .ok_or(InterpreterError::MemoryOverflow)?
+                }
                 Operation::Input => {
                     let input = self.stdin.pop_front().unwrap_or(0 as char);
                     self.memory[self.pointer] = input as u8;
@@ -97,23 +120,49 @@ fn parse_source(source: &str) -> Result<Vec<Operation>, InterpreterError> {
     stack.push_back(Vec::new());
 
     for token in tokens {
+        let cur_operations = stack.back_mut().expect("Stack should not be empty!");
         match token {
-            Token::MoveRight => stack.back_mut().unwrap().push(Operation::MoveRight),
-            Token::MoveLeft => stack.back_mut().unwrap().push(Operation::MoveLeft),
-            Token::Increment => stack.back_mut().unwrap().push(Operation::Increment),
-            Token::Decrement => stack.back_mut().unwrap().push(Operation::Decrement),
-            Token::Input => stack.back_mut().unwrap().push(Operation::Input),
-            Token::Output => stack.back_mut().unwrap().push(Operation::Output),
+            Token::MoveRight => {
+                if let Some(Operation::MoveRight(x)) = cur_operations.last_mut() {
+                    *x += 1;
+                } else {
+                    cur_operations.push(Operation::MoveRight(1))
+                }
+            }
+            Token::MoveLeft => {
+                if let Some(Operation::MoveLeft(x)) = cur_operations.last_mut() {
+                    *x += 1;
+                } else {
+                    cur_operations.push(Operation::MoveLeft(1))
+                }
+            }
+            Token::Increment => {
+                if let Some(Operation::Increment(x)) = cur_operations.last_mut() {
+                    *x += 1;
+                } else {
+                    cur_operations.push(Operation::Increment(1))
+                }
+            }
+            Token::Decrement => {
+                if let Some(Operation::Decrement(x)) = cur_operations.last_mut() {
+                    *x += 1;
+                } else {
+                    cur_operations.push(Operation::Decrement(1))
+                }
+            }
+            Token::Input => cur_operations.push(Operation::Input),
+            Token::Output => cur_operations.push(Operation::Output),
             Token::LoopBegin => stack.push_back(Vec::new()),
             Token::LoopEnd => {
-                let operations = stack.pop_back().unwrap();
-                if stack.is_empty() {
-                    return Err(InterpreterError::ParseError(String::from(
-                        "Unexpected end of loop",
-                    )));
-                }
+                let cur_operations = stack.pop_back().unwrap();
+                let prev_operations =
+                    stack
+                        .back_mut()
+                        .ok_or(InterpreterError::ParseError(String::from(
+                            "Unexpected end of loop",
+                        )))?;
 
-                stack.back_mut().unwrap().push(Operation::Loop(operations))
+                prev_operations.push(Operation::Loop(cur_operations))
             }
             _ => {
                 return Err(InterpreterError::ParseError(format!(
@@ -217,5 +266,45 @@ mod test {
 
         let actual = interpret(source, input);
         assert_eq!(Ok(expected), actual);
+    }
+
+    #[test]
+    fn catch_pointer_overflow_left() {
+        let source = ">><<<";
+        let input = "";
+        let expected = Err(InterpreterError::PointerOverflow);
+
+        let actual = interpret(source, input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn catch_pointer_overflow_right() {
+        let source = "+[>+]";
+        let input = "";
+        let expected = Err(InterpreterError::PointerOverflow);
+
+        let actual = interpret(source, input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn catch_memory_overflow_left() {
+        let source = "+--";
+        let input = "";
+        let expected = Err(InterpreterError::MemoryOverflow);
+
+        let actual = interpret(source, input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn catch_memory_overflow_right() {
+        let source = "+[+]";
+        let input = "";
+        let expected = Err(InterpreterError::MemoryOverflow);
+
+        let actual = interpret(source, input);
+        assert_eq!(expected, actual);
     }
 }
