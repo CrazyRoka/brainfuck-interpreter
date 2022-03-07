@@ -1,4 +1,6 @@
-use std::collections::LinkedList;
+use std::{collections::LinkedList, io};
+
+use thiserror::Error;
 
 const MEMORY_SIZE: usize = 30_000;
 
@@ -26,22 +28,27 @@ enum Operation {
     Loop(Vec<Operation>),
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Debug, Error)]
 pub enum InterpreterError {
+    #[error("Error parsing source: `{0}`")]
     ParseError(String),
+    #[error("Memory overflow")]
     MemoryOverflow,
+    #[error("Pointer is out of memory bounds")]
     PointerOverflow,
+    #[error("Error reading from stdin: `{0}`")]
+    StdinError(io::Error),
 }
 
 struct Program {
     memory: [u8; MEMORY_SIZE],
     pointer: usize,
-    stdin: LinkedList<char>,
+    stdin: Box<dyn io::Read>,
     stdout: String,
 }
 
 impl Program {
-    fn new(stdin: LinkedList<char>) -> Self {
+    fn new(stdin: Box<dyn io::Read>) -> Self {
         Self {
             memory: [0u8; MEMORY_SIZE],
             pointer: 0,
@@ -84,8 +91,11 @@ impl Program {
                         .ok_or(InterpreterError::MemoryOverflow)?
                 }
                 Operation::Input => {
-                    let input = self.stdin.pop_front().unwrap_or(0 as char);
-                    self.memory[self.pointer] = input as u8;
+                    let mut buf = [0u8];
+                    if let Err(err) = self.stdin.read(&mut buf) {
+                        return Err(InterpreterError::StdinError(err));
+                    }
+                    self.memory[self.pointer] = buf[0] as u8;
                 }
                 Operation::Output => self.stdout.push(self.memory[self.pointer] as char),
                 Operation::Loop(operations) => {
@@ -155,12 +165,9 @@ fn parse_source(source: &str) -> Result<Vec<Operation>, InterpreterError> {
             Token::LoopBegin => stack.push_back(Vec::new()),
             Token::LoopEnd => {
                 let cur_operations = stack.pop_back().unwrap();
-                let prev_operations =
-                    stack
-                        .back_mut()
-                        .ok_or(InterpreterError::ParseError(String::from(
-                            "Unexpected end of loop",
-                        )))?;
+                let prev_operations = stack.back_mut().ok_or_else(|| {
+                    InterpreterError::ParseError(String::from("Unexpected end of loop"))
+                })?;
 
                 prev_operations.push(Operation::Loop(cur_operations))
             }
@@ -183,10 +190,9 @@ fn parse_source(source: &str) -> Result<Vec<Operation>, InterpreterError> {
     }
 }
 
-pub fn interpret(source: &str, input: &str) -> Result<String, InterpreterError> {
+pub fn interpret(source: &str, stdin: Box<dyn io::Read>) -> Result<String, InterpreterError> {
     let operations = parse_source(source)?;
-    let input = input.chars().collect();
-    let program = Program::new(input);
+    let program = Program::new(stdin);
     program.execute(&operations)
 }
 
@@ -202,50 +208,44 @@ mod test {
             Operation::Loop(vec![Operation::Output, Operation::Input]),
         ];
 
-        let actual = parse_source(source);
-        assert_eq!(Ok(expected), actual);
+        let actual = parse_source(source).expect("It works");
+        assert_eq!(expected, actual);
     }
 
     #[test]
     fn parse_cat_missing_end_of_loop() {
         let source = ",[.,";
-        let expected = Err(InterpreterError::ParseError(String::from(
-            "Expected end of loop",
-        )));
 
         let actual = parse_source(source);
-        assert_eq!(expected, actual);
+        assert!(matches!(actual, Err(InterpreterError::ParseError(_))))
     }
 
     #[test]
     fn parse_cat_redundat_end_of_loop() {
         let source = ",[.,]]";
-        let expected = Err(InterpreterError::ParseError(String::from(
-            "Unexpected end of loop",
-        )));
 
         let actual = parse_source(source);
-        assert_eq!(expected, actual);
+        assert!(matches!(actual, Err(InterpreterError::ParseError(_))));
     }
 
     #[test]
     fn hello_world() {
         let source = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
-        let input = "";
+        let input = "".as_bytes();
         let expected = String::from("Hello World!\n");
 
-        let actual = interpret(source, input);
-        assert_eq!(Ok(expected), actual);
+        let actual = interpret(source, Box::new(input)).expect("It works");
+        assert_eq!(expected, actual);
     }
 
     #[test]
     fn cat() {
         let source = ",[.,]";
-        let input = "I love programming!";
-        let expected = String::from(input);
+        let input = "I love programming!".as_bytes();
+        let expected = String::from("I love programming!");
 
-        let actual = interpret(source, input);
-        assert_eq!(Ok(expected), actual);
+        let actual = interpret(source, Box::new(input)).expect("It works");
+        assert_eq!(expected, actual);
     }
 
     #[test]
@@ -261,50 +261,46 @@ mod test {
         ++++++++++++++++++++++++++++++++++++++++++++.[-]<<
         <<<<<<<<<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]<-[>>.>.<<<
         [-]]<<[>>+>+<<<-]>>>[<<<+>>>-]<<[<+>-]>[<+>-]<<<-]";
-        let input = "";
+        let input = "".as_bytes();
         let expected = String::from("1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89");
 
-        let actual = interpret(source, input);
-        assert_eq!(Ok(expected), actual);
+        let actual = interpret(source, Box::new(input)).expect("It works");
+        assert_eq!(expected, actual);
     }
 
     #[test]
     fn catch_pointer_overflow_left() {
         let source = ">><<<";
-        let input = "";
-        let expected = Err(InterpreterError::PointerOverflow);
+        let input = "".as_bytes();
 
-        let actual = interpret(source, input);
-        assert_eq!(expected, actual);
+        let actual = interpret(source, Box::new(input));
+        assert!(matches!(actual, Err(InterpreterError::PointerOverflow)));
     }
 
     #[test]
     fn catch_pointer_overflow_right() {
         let source = "+[>+]";
-        let input = "";
-        let expected = Err(InterpreterError::PointerOverflow);
+        let input = "".as_bytes();
 
-        let actual = interpret(source, input);
-        assert_eq!(expected, actual);
+        let actual = interpret(source, Box::new(input));
+        assert!(matches!(actual, Err(InterpreterError::PointerOverflow)));
     }
 
     #[test]
     fn catch_memory_overflow_left() {
         let source = "+--";
-        let input = "";
-        let expected = Err(InterpreterError::MemoryOverflow);
+        let input = "".as_bytes();
 
-        let actual = interpret(source, input);
-        assert_eq!(expected, actual);
+        let actual = interpret(source, Box::new(input));
+        assert!(matches!(actual, Err(InterpreterError::MemoryOverflow)));
     }
 
     #[test]
     fn catch_memory_overflow_right() {
         let source = "+[+]";
-        let input = "";
-        let expected = Err(InterpreterError::MemoryOverflow);
+        let input = "".as_bytes();
 
-        let actual = interpret(source, input);
-        assert_eq!(expected, actual);
+        let actual = interpret(source, Box::new(input));
+        assert!(matches!(actual, Err(InterpreterError::MemoryOverflow)));
     }
 }

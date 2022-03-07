@@ -13,9 +13,9 @@ fn fibonacci() -> String {
     ++++++++++++++++++++++++++++++++++++++++++++.[-]<<
     <<<<<<<<<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]<-[>>.>.<<<
     [-]]<<[>>+>+<<<-]>>>[<<<+>>>-]<<[<+>-]>[<+>-]<<<-]";
-    let input = "";
+    let input = "".as_bytes();
 
-    let actual = interpret(source, input);
+    let actual = interpret(source, Box::new(input));
     actual.expect("Program should work")
 }
 
