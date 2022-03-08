@@ -40,15 +40,15 @@ pub enum InterpreterError {
     StdinError(io::Error),
 }
 
-struct Program {
+struct Program<'a> {
     memory: [u8; MEMORY_SIZE],
     pointer: usize,
-    stdin: Box<dyn io::Read>,
+    stdin: Box<dyn io::Read + 'a>,
     stdout: String,
 }
 
-impl Program {
-    fn new(stdin: Box<dyn io::Read>) -> Self {
+impl<'a> Program<'a> {
+    fn new(stdin: Box<dyn io::Read + 'a>) -> Self {
         Self {
             memory: [0u8; MEMORY_SIZE],
             pointer: 0,
@@ -190,7 +190,10 @@ fn parse_source(source: &str) -> Result<Vec<Operation>, InterpreterError> {
     }
 }
 
-pub fn interpret(source: &str, stdin: Box<dyn io::Read>) -> Result<String, InterpreterError> {
+pub fn interpret<'a>(
+    source: &'a str,
+    stdin: Box<dyn io::Read + 'a>,
+) -> Result<String, InterpreterError> {
     let operations = parse_source(source)?;
     let program = Program::new(stdin);
     program.execute(&operations)
