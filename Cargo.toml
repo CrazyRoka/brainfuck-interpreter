@@ -1,3 +1,8 @@
 [workspace]
 
-members = ["brainfuck_interpreter", "brainfuck_cli", "brainfuck_yew"]
+members = [
+    "brainfuck_interpreter",
+    "brainfuck_cli",
+    "brainfuck_yew",
+    "brainfuck_aws",
+]
