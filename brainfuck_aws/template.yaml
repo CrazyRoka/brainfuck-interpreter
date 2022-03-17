@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Resources:
-  HelloWorldFunction:
+  BrainfuckFunction:
     Type: AWS::Serverless::Function
     Properties:
       MemorySize: 128
@@ -12,19 +12,19 @@ Resources:
       Timeout: 5
       CodeUri: .
       Events:
-        HelloWorld:
+        Brainfuck:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
-            Path: /hello
+            Path: /brainfuck
             Method: post
 
 Outputs:
   RestApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+    Description: "API Gateway endpoint URL for Prod stage for Brainfuck function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/brainfuck/"
+  BrainfuckFunction:
+    Description: "Brainfuck World Lambda Function ARN"
+    Value: !GetAtt BrainfuckFunction.Arn
+  BrainfuckFunctionIamRole:
+    Description: "Implicit IAM Role created for Brainfuck World function"
+    Value: !GetAtt BrainfuckFunctionRole.Arn

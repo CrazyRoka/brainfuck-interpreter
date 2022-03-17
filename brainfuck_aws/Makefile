@@ -6,6 +6,6 @@ build:
 	cargo build --target $(ARCH) --release --target-dir ../target
 	sam build
 
-build-HelloWorldFunction:
+build-BrainfuckFunction:
 	cp $(ROOT_DIR)/../target/$(ARCH)/release/brainfuck_aws $(ARTIFACTS_DIR)/bootstrap
 	strip $(ARTIFACTS_DIR)/bootstrap
